@@ -219,7 +219,6 @@ public class AvariaService
                 {
                     Id   = a.Asset.Id,
                     Name = a.Asset.Name,
-                    // … copy any other fields your AssetDTO has
                 },
                 Descricao           = a.Descricao,
                 Photo               = string.IsNullOrEmpty(a.Photo)
