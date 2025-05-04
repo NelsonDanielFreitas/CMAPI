@@ -118,4 +118,6 @@ public class AvariaController : ControllerBase
             return StatusCode(500, "Internal Server Error");
         }
     }
+    
+    
 }

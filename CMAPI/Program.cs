@@ -22,6 +22,7 @@ builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddScoped<AvariaService>();
+builder.Services.AddScoped<NotificationService>();
 
 /*builder.Services.AddScoped<CategoryService>();
 builder.Services.AddScoped<ProductService>();
