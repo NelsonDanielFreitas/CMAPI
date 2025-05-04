@@ -1,0 +1,71 @@
+appsettings.json
+appsettings.*.json 
+
+# Ignore the build output directories
+bin/
+obj/
+
+# Ignore user-specific files
+.vs/
+.vscode/
+.idea/
+
+# Ignore ASP.NET Core files
+appsettings.Development.json
+appsettings.Production.json
+appsettings.json
+
+# Ignore secrets and sensitive files
+*.key
+*.pem
+*.pfx
+*.cer
+
+# Ignore the publish folder
+publish/
+
+# Ignore the .NET Core tooling folder
+/.vsconfig
+
+# Ignore NUnit or other test frameworks
+test_results/
+
+# Ignore the package folder
+packages/
+
+# Ignore logs and temporary files
+logs/
+log/
+tmp/
+
+# Ignore JetBrains Rider project files
+.idea/
+
+# Ignore npm, yarn, or other package manager files
+node_modules/
+dist/
+
+# Ignore Visual Studio for Mac
+.vscode/
+
+# Ignore coverage reports
+coverage/
+
+# Ignore the global .NET Tools folder
+.dotnet-tools/
+
+# Ignore local user profile folders
+profile/
+
+# Ignore the local package cache
+~$*
+
+# Ignore the Docker files (if you're not including them in version control)
+Dockerfile
+docker-compose.yml
+
+# Ignore NuGet packages and their caches
+*.nupkg
+.nuget/
+
+*.dll
