@@ -1,6 +1,7 @@
 using CMAPI.Data;
 using CMAPI.DTO.Asset;
 using CMAPI.DTO.Avaria;
+using CMAPI.Enum;
 using CMAPI.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -124,11 +125,19 @@ public class AvariaService
             Guid? technicianId = null;
             if (urgencia.Name.Equals("Alta", StringComparison.OrdinalIgnoreCase))
             {
-                // e.g. pick first available tech
-                var techUser = await _context.Users
-                    .Where(u => /* your criteria for technicians */ true)
-                    .FirstOrDefaultAsync();
-                technicianId = techUser?.Id;
+                // 1) Get all technicians
+                var techUsers = await _context.Users
+                    .Include(u => u.Role)
+                    .Where(u => u.Role.RoleName.ToUpper() == "TECNICO")   
+                    .ToListAsync();                                       
+
+                if (techUsers.Count > 0)
+                {
+                    var rnd = new Random();
+                    int idx = rnd.Next(techUsers.Count);
+                    technicianId = techUsers[idx].Id;
+                }
+                
             }
 
             var newAvaria = new Avaria
@@ -151,6 +160,93 @@ public class AvariaService
 
             _context.Avaria.Add(newAvaria);
             await _context.SaveChangesAsync();
+            
+            //Popular a tabela de Atribuicao Avaria para quando vem um tecnico diferente a null para a urgencia grave
+            var newAvariaAtribuicao = new AvariaAtribuicao();
+            if (newAvaria.TechnicianId != null)
+            {
+                Guid AdminAutomaticoId = Guid.NewGuid();
+                var AdminUsersAutomatico = await _context.Users
+                    .Include(u => u.Role)
+                    .Where(u => u.Role.RoleName.ToUpper() == "ADMIN")   
+                    .ToListAsync();                                       
+
+                if (AdminUsersAutomatico.Count > 0)
+                {
+                    var rnd = new Random();
+                    int idx = rnd.Next(AdminUsersAutomatico.Count);
+                    AdminAutomaticoId = AdminUsersAutomatico[idx].Id;
+                }
+                newAvariaAtribuicao = new AvariaAtribuicao()
+                {
+                    Id = Guid.NewGuid(),
+                    AvariaId = newAvaria.Id,
+                    AtribuidoPor = AdminAutomaticoId,
+                    TechnicianId = newAvaria.TechnicianId,
+                    AssignedAt = newAvaria.CreatedAt
+                };
+
+                _context.AvariaAtribuicoes.Add(newAvariaAtribuicao);
+                await _context.SaveChangesAsync();
+            }
+            
+            //Parte para criar a notificação ao criar uma avaria com os diferentes tipos de possiveis notificações
+            string message;
+            NotificationType notifType;
+
+            if (newAvaria.TechnicianId != null)
+            {
+                message = "Foi lhe atribuído uma nova avaria automática devido a ter estado de urgência grave. Se não conseguir resolver digite a razão.";
+                notifType = NotificationType.AvariaAutomaticaNotificacao;
+                var techNotification  = new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = newAvaria.TechnicianId,
+                    Message = message,
+                    Type = notifType,
+                    CreatedAt = DateTime.UtcNow,
+                    IsRead = false,
+                    ResponseStatus = NotificationResponseStatus.Pending,
+                    AvariaId = newAvaria.Id,
+                    AvariaAtribuicaoId = newAvariaAtribuicao.Id,
+                    ResponseReason = "Ainda sem nada"
+                };
+                
+                _context.Notifications.Add(techNotification );
+            }
+            else
+            {
+                message = "Foi criada uma nova Avaria. O Administrador terá de ir selecionar o Técnico.";
+                notifType = NotificationType.NovaAvaria;
+
+                // fetch all admins
+                var adminUsers = await _context.Users
+                    .Include(u => u.Role)
+                    .Where(u => u.Role.RoleName.ToUpper() == "ADMIN")
+                    .ToListAsync();
+
+                // create one Notification per admin
+                var adminNotifications = adminUsers
+                    .Select(admin => new Notification
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = admin.Id,
+                        Message = message,
+                        Type = notifType,
+                        CreatedAt = DateTime.UtcNow,
+                        IsRead = false,
+                        ResponseStatus = NotificationResponseStatus.Pending,
+                        AvariaId = newAvaria.Id,
+                        ResponseReason = "Ainda sem nada",
+                        AvariaAtribuicaoId = null
+                    })
+                    .ToList();
+
+                _context.Notifications.AddRange(adminNotifications);
+            }
+
+            await _context.SaveChangesAsync();
+            
             return true;
         }
         catch (Exception ex)
