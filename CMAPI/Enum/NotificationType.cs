@@ -7,4 +7,5 @@ public enum NotificationType
     Custom = 3,
     AvariaAutomaticaNotificacao = 4,
     NovaAvaria = 5,
+    AvariaRecusada = 6
 }

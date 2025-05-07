@@ -1,6 +1,7 @@
 using CMAPI.Data;
 using CMAPI.DTO.Notification;
 using CMAPI.Enum;
+using CMAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CMAPI.Services;
@@ -60,6 +61,50 @@ public class NotificationService
             existingNotification.ResponseStatus = NotificationResponseStatus.Accepted;
             
             _context.Notifications.Update(existingNotification);
+            await _context.SaveChangesAsync();
+
+            return true;
+        }
+        else if (submit.action.Equals("dismiss"))
+        {
+            existingNotification.IsRead = true;
+            existingNotification.ResponseAt = DateTime.UtcNow;
+            existingNotification.ResponseStatus = NotificationResponseStatus.Declined;
+            existingNotification.ResponseReason = submit.reason;
+            
+            _context.Notifications.Update(existingNotification);
+            await _context.SaveChangesAsync();
+            
+            var existingTecnico = await _context.Users.FindAsync(existingNotification.UserId);
+
+            
+            string message = $"Uma Avaria foi recusada pelo técnico {existingTecnico.Email}";
+            NotificationType notifType = NotificationType.AvariaRecusada;
+
+            // fetch all admins
+            var adminUsers = await _context.Users
+                .Include(u => u.Role)
+                .Where(u => u.Role.RoleName.ToUpper() == "ADMIN")
+                .ToListAsync();
+
+            // create one Notification per admin
+            var adminNotifications = adminUsers
+                .Select(admin => new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = admin.Id,
+                    Message = message,
+                    Type = notifType,
+                    CreatedAt = DateTime.UtcNow,
+                    IsRead = false,
+                    ResponseStatus = NotificationResponseStatus.Pending,
+                    AvariaId = existingNotification.AvariaId,
+                    ResponseReason = submit.reason,
+                    AvariaAtribuicaoId = null
+                })
+                .ToList();
+
+            _context.Notifications.AddRange(adminNotifications);
             await _context.SaveChangesAsync();
 
             return true;
