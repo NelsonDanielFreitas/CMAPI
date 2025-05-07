@@ -118,6 +118,12 @@ public class AvariaController : ControllerBase
             return StatusCode(500, "Internal Server Error");
         }
     }
-    
-    
+
+
+    [HttpGet("GetAllTecnicos")]
+    public async Task<IActionResult> GetAllTecnicos()
+    {
+        var tecnicos = await _avariaService.GetAllTecnicos();
+        return Ok(tecnicos);
+    }
 }

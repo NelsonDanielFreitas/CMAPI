@@ -332,4 +332,22 @@ public class AvariaService
 
         return dtos;
     }
+
+    public async Task<IEnumerable<UserTecnicoDTO>> GetAllTecnicos()
+    {
+        // assumes Role.Name holds the string "TECNICO"
+        return await _context.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .Where(u => u.Role.RoleName == "TECNICO")
+            .Select(u => new UserTecnicoDTO
+            {
+                Id          = u.Id,
+                Email       = u.Email,
+                FirstName   = u.FirstName,
+                LastName    = u.LastName,
+                PhoneNumber = u.PhoneNumber
+            })
+            .ToListAsync();
+    }
 }

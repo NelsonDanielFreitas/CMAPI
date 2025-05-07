@@ -43,4 +43,30 @@ public class NotificationService
 
         return notifications;
     }
+
+    public async Task<bool> UpdateNotificationAsync(NotificationSubmit submit, Guid idNotification)
+    {
+        var existingNotification = await _context.Notifications.FindAsync(idNotification);
+
+        if (existingNotification == null)
+        {
+            return false;
+        }
+
+        if (submit.action.Equals("ignore"))
+        {
+            existingNotification.IsRead = true;
+            existingNotification.ResponseAt = DateTime.UtcNow;
+            existingNotification.ResponseStatus = NotificationResponseStatus.Accepted;
+            
+            _context.Notifications.Update(existingNotification);
+            await _context.SaveChangesAsync();
+
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
 }

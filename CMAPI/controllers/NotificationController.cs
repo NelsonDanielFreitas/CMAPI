@@ -1,3 +1,4 @@
+using CMAPI.DTO.Notification;
 using CMAPI.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -48,4 +49,39 @@ public class NotificationController : ControllerBase
             return StatusCode(500, "Internal Server Error");
         }
     }
+
+    [HttpPut("UpdateNotification/{id}")]
+    public async Task<IActionResult> UpdateNotification([FromBody] NotificationSubmit submitDto, Guid id)
+    {
+        try
+        {
+            var notifications = await _notificationService.UpdateNotificationAsync(submitDto, id);
+
+            if (notifications)
+            {
+                return Ok(new { message = "Ação feita com sucesso" });
+            }
+            else
+            {
+                return BadRequest(new { message = "Erro ao fazer ação da notificação"});
+            }
+            
+        }
+        catch (ArgumentException ex)
+        {
+            // optional: more granular error handling if you want
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            // don’t expose internal details in production
+            return StatusCode(500, "Internal Server Error");
+        }
+    }
+    
+    
 }
