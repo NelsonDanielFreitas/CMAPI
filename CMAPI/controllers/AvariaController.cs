@@ -158,4 +158,25 @@ public class AvariaController : ControllerBase
         var tecnicos = await _avariaService.GetAllTecnicos();
         return Ok(tecnicos);
     }
-}
+
+    [HttpPut("UpdateAvaria/{id}")]
+    public async Task<IActionResult> UpdateAvaria([FromBody] RequestEditAvariaDTO requestEdit, Guid id)
+    {
+        var authHeader = Request.Headers["Authorization"].ToString();
+        if (!authHeader.StartsWith("Bearer "))
+            return BadRequest(new { message = "Missing or malformed Authorization header." });
+
+        var token = authHeader["Bearer ".Length..].Trim();
+        try
+        {
+            var userId = _jwtService.GetUserIdFromToken(token);
+            var updatedAvaria = await _avariaService.UpdateAvaria(requestEdit, id, userId);
+            
+            return Ok(new { message = "Funcionou" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = "Internal Server Error" });
+        }
+    }
+} 

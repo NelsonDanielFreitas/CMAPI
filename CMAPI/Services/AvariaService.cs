@@ -2,6 +2,7 @@ using CMAPI.Data;
 using CMAPI.DTO.Asset;
 using CMAPI.DTO.Avaria;
 using CMAPI.Enum;
+using CMAPI.Helper;
 using CMAPI.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -426,5 +427,58 @@ public class AvariaService
                 PhoneNumber = u.PhoneNumber
             })
             .ToListAsync();
+    }
+
+    public async Task<bool> UpdateAvaria(RequestEditAvariaDTO requestEdit, Guid id, string userId)
+    {
+        var existingAvaria = await _context.Avaria.FindAsync(id);
+        
+        if (existingAvaria == null)
+            return false;
+        
+        if (!Guid.TryParse(userId, out var parseduserId))
+            throw new ArgumentException("Invalid user id", nameof(userId));
+        
+        var currentUser = await _context.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == parseduserId);
+
+        if (currentUser.Role.RoleName.Equals("ADMIN"))
+        {
+            if (!Guid.TryParse(requestEdit.TechinicianId, out var parsedTechinicianId))
+                throw new ArgumentException("Invalid user id", nameof(requestEdit.TechinicianId));
+            existingAvaria.TechnicianId = parsedTechinicianId;
+        }
+
+        if (requestEdit.TempoResolver != null)
+        {
+            if (!string.IsNullOrWhiteSpace(requestEdit.TempoResolver))
+            {
+                if (TimeSpanParser.TryParsePortuguese(requestEdit.TempoResolver, out var ts))
+                {
+                    existingAvaria.TempoResolverAvaria = ts;
+                }
+                else
+                {
+                    // handle parse failure: e.g. return false or throw
+                    return false;
+                }
+            }
+        }
+
+        if (requestEdit.Descricao != existingAvaria.Descricao)
+        {
+            existingAvaria.Descricao = requestEdit.Descricao;
+        }
+        
+        if (!Guid.TryParse(requestEdit.StatusAvaria, out var parsedStatusAvaria))
+            throw new ArgumentException("Invalid user id", nameof(requestEdit.StatusAvaria));
+        existingAvaria.IdStatus = parsedStatusAvaria;
+        
+        _context.Avaria.Update(existingAvaria);
+        await _context.SaveChangesAsync();
+
+        return true;
     }
 }
