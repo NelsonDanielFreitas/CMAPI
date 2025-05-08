@@ -54,7 +54,7 @@ public class NotificationService
             return false;
         }
 
-        if (submit.action.Equals("ignore"))
+        if (submit.action.Equals("ignore") || submit.action.Equals("handleNow"))
         {
             existingNotification.IsRead = true;
             existingNotification.ResponseAt = DateTime.UtcNow;
@@ -105,6 +105,24 @@ public class NotificationService
                 .ToList();
 
             _context.Notifications.AddRange(adminNotifications);
+            await _context.SaveChangesAsync();
+
+            var avaria = await _context.Avaria.FindAsync(existingNotification.AvariaId);
+
+            avaria.TechnicianId = null;
+            avaria.UpdatedAt = DateTime.UtcNow;
+
+            _context.Avaria.Update(avaria);
+            await _context.SaveChangesAsync();
+
+            var AvariaAtribuicao = await _context.AvariaAtribuicoes.FindAsync(existingNotification.AvariaAtribuicaoId);
+            
+            if (AvariaAtribuicao == null)
+            {
+                return false;
+            }
+
+            _context.AvariaAtribuicoes.Remove(AvariaAtribuicao);
             await _context.SaveChangesAsync();
 
             return true;

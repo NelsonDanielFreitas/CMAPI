@@ -56,6 +56,19 @@ public class AvariaService
         }).ToListAsync();
     }
     
+    public async Task<IEnumerable<TipoStatusAvariaDTO>> GetAllStatusAvaria()
+    {
+        var query = _context.TipoStatusAvaria
+            .AsNoTracking()
+            .AsQueryable();
+
+        return await query.Select(a => new TipoStatusAvariaDTO()
+        {
+            Id = a.Id,
+            Name = a.Name
+        }).ToListAsync();
+    }
+    
     public async Task<string> SaveBase64ImageAsync(string base64)
     {
         // Detect and strip data URI prefix (e.g. "data:image/png;base64,...")
@@ -331,6 +344,70 @@ public class AvariaService
             .ToListAsync();
 
         return dtos;
+    }
+    
+    
+    public async Task<AvariaDTO> GetAvariaByIdAsync(Guid avariaId)
+    {
+        // 1) Retrieve the Avaria with all its navigation properties
+        var avaria = await _context.Avaria
+            .Include(a => a.User)
+            .Include(a => a.Technician)
+            .Include(a => a.Urgencia)
+            .Include(a => a.Status)
+            .Include(a => a.Asset)
+            .SingleOrDefaultAsync(a => a.Id == avariaId);
+
+        if (avaria == null)
+            throw new KeyNotFoundException($"Avaria with Id '{avariaId}' not found.");
+
+        // 2) Map to DTO
+        return new AvariaDTO
+        {
+            Id                  = avaria.Id,
+            UserId              = new User2DTO
+            {
+                Id        = avaria.User.Id,
+                FirstName = avaria.User.FirstName,
+                LastName  = avaria.User.LastName
+            },
+            TechinicianId       = avaria.Technician == null
+                ? null
+                : new TechinicianDTO
+                {
+                    Id        = avaria.Technician.Id,
+                    FirstName = avaria.Technician.FirstName,
+                    LastName  = avaria.Technician.LastName
+                },
+            IdUrgencia          = new TipoUrgenciaDTO
+            {
+                Id   = avaria.Urgencia.Id,
+                Name = avaria.Urgencia.Name
+            },
+            IdStatus            = new StatusAvariaDTO
+            {
+                Id   = avaria.Status.Id,
+                Name = avaria.Status.Name
+            },
+            AssetId             = avaria.Asset == null
+                ? null
+                : new AssetDTO
+                {
+                    Id   = avaria.Asset.Id,
+                    Name = avaria.Asset.Name
+                },
+            Descricao           = avaria.Descricao,
+            Photo               = string.IsNullOrEmpty(avaria.Photo)
+                ? null
+                : Convert.ToBase64String(
+                      File.ReadAllBytes(
+                          Path.Combine(_storageRoot, Path.GetFileName(avaria.Photo))
+                      )
+                  ),
+            TempoResolverAvaria = avaria.TempoResolverAvaria,
+            CreatedAt           = avaria.CreatedAt,
+            Localizacao         = avaria.Localizacao
+        };
     }
 
     public async Task<IEnumerable<UserTecnicoDTO>> GetAllTecnicos()

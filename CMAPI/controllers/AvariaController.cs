@@ -43,6 +43,13 @@ public class AvariaController : ControllerBase
         return Ok(urgencia);
     }
 
+    [HttpGet("GetAllStatusAvaria")]
+    public async Task<IActionResult> GetAllStatusAvaria()
+    {
+        var status = await _avariaService.GetAllStatusAvaria();
+        return Ok(status);
+    }
+
     [HttpPost("addAvaria")]
     //[Consumes("multipart/form-data")]
     public async Task<IActionResult> addAvaria([FromBody] CreateAvariaRequestDto avaria)
@@ -102,6 +109,31 @@ public class AvariaController : ControllerBase
 
             // 3. Return the DTOs to the caller
             return Ok(avarias);
+        }
+        catch (ArgumentException ex)
+        {
+            // optional: more granular error handling if you want
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            // don’t expose internal details in production
+            return StatusCode(500, "Internal Server Error");
+        }
+    }
+    
+    [HttpGet("GetAvariaById/{id}")]
+    public async Task<IActionResult> GetAvariaById(Guid id)
+    {
+        try
+        {
+            var avaria = await _avariaService.GetAvariaByIdAsync(id);
+
+            return Ok(avaria);
         }
         catch (ArgumentException ex)
         {
