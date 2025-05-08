@@ -432,6 +432,7 @@ public class AvariaService
     public async Task<bool> UpdateAvaria(RequestEditAvariaDTO requestEdit, Guid id, string userId)
     {
         var existingAvaria = await _context.Avaria.FindAsync(id);
+        bool newTechinician = false;
         
         if (existingAvaria == null)
             return false;
@@ -458,6 +459,7 @@ public class AvariaService
                 if (TimeSpanParser.TryParsePortuguese(requestEdit.TempoResolver, out var ts))
                 {
                     existingAvaria.TempoResolverAvaria = ts;
+                    newTechinician = true;
                 }
                 else
                 {
@@ -478,7 +480,26 @@ public class AvariaService
         
         _context.Avaria.Update(existingAvaria);
         await _context.SaveChangesAsync();
-
+        
+        string message = "Uma avaria que você colocou foi atualizada";
+        NotificationType notifType = NotificationType.StatusChanged;
+        var techNotification  = new Notification
+        {
+            Id = Guid.NewGuid(),
+            UserId = existingAvaria.UserId,
+            Message = message,
+            Type = notifType,
+            CreatedAt = DateTime.UtcNow,
+            IsRead = false,
+            ResponseStatus = NotificationResponseStatus.Pending,
+            AvariaId = existingAvaria.Id,
+            AvariaAtribuicaoId = null,
+            ResponseReason = "Ainda sem nada"
+        };
+                
+        _context.Notifications.Add(techNotification );
+        await _context.SaveChangesAsync();
+        
         return true;
     }
 }
