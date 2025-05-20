@@ -1,6 +1,7 @@
 using System.Text;
 using CMAPI.Data;
 using CMAPI.Services;
+using CMAPI.Services.Encryption;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +24,9 @@ builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddScoped<AvariaService>();
 builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<UsersService>();
 
+builder.Services.AddSingleton<IEncryptionService, AesEncryptionService>();
 /*builder.Services.AddScoped<CategoryService>();
 builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<IRedisCacheService, RedisCacheService>();
