@@ -44,4 +44,51 @@ public class UsersService
 
         return dtos;
     }
+    
+    public async Task<IEnumerable<RoleDto>> GetAllRoles()
+    {
+        var query = _context.Roles
+            .AsNoTracking()
+            .AsQueryable();
+
+        return await query.Select(a => new RoleDto()
+        {
+            Id = a.Id,
+            RoleName = a.RoleName
+        }).ToListAsync();
+    }
+
+
+    public async Task<bool> UpdateUsers(UpdateUser updateUser)
+    {
+        // Decrypt the incoming ID, which should yield a GUID string
+        var decryptedId = _crypto.Decrypt(updateUser.Id);
+
+        // Try to parse it as a Guid
+        if (!Guid.TryParse(decryptedId, out var userId))
+        {
+            // Invalid or corrupted ID
+            return false;
+        }
+
+        // Look up the user by their Guid primary key
+        var existingUser = await _context.Users.FindAsync(userId);
+        if (existingUser == null)
+        {
+            return false;
+        }
+
+        // Update properties
+        existingUser.FirstName   = updateUser.FirstName;
+        existingUser.LastName    = updateUser.LastName;
+        existingUser.Email       = updateUser.Email;
+        existingUser.PhoneNumber = updateUser.PhoneNumber;
+        // If you meant to allow changing roles, uncomment & use this:
+        existingUser.IdRole = updateUser.RoleId;
+
+        _context.Users.Update(existingUser);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
 }

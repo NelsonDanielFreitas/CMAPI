@@ -1,9 +1,11 @@
+using CMAPI.DTO.Users;
 using CMAPI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CMAPI.controllers;
 
-[Microsoft.AspNetCore.Components.Route("api/users")]
+[Route("api/users")]
 [ApiController]
 public class UsersController : ControllerBase
 {
@@ -35,6 +37,37 @@ public class UsersController : ControllerBase
         {
             // don’t expose internal details in production
             return StatusCode(500, "Internal Server Error");
+        }
+    }
+    
+    [HttpGet("GetAllRoles")]
+    public async Task<IActionResult> GetAllRoles()
+    {
+        var roles = await _usersService.GetAllRoles();
+        return Ok(roles);
+    }
+
+    [HttpPut("UpdateUsers")]
+    public async Task<IActionResult> UpdateUsers([FromBody] UpdateUser updateUser)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(new { message = "Invalid data" });
+
+        try
+        {
+            var isUpdated = await _usersService.UpdateUsers(updateUser);
+            if (!isUpdated)
+                return NotFound(new { message = "User not found" });
+
+            return Ok(new { message = "User atualizado com sucesso" });
+        }
+        catch (DbUpdateException dbEx)
+        {
+            return StatusCode(500, new { message = "Database error: " + dbEx.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Server error: " + ex.Message });
         }
     }
 }
