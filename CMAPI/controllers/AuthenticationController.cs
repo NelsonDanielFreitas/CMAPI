@@ -53,7 +53,7 @@ public class AuthenticationController : ControllerBase
             Expires = DateTime.UtcNow.AddDays(7)
         });
 
-        return Ok(new { AccessToken = accessToken, RefreshToken = result.User.refreshToken, User = new { result.User.Email, result.User.Role } });;
+        return Ok(new { AccessToken = accessToken, RefreshToken = result.User.refreshToken, User = new { result.User.Email, result.User.Role, result.User.Id } });;
     }
 
     [HttpPost("register")]
