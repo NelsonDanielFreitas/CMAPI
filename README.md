@@ -31,6 +31,7 @@ A robust and modern Contact Management API built with ASP.NET Core 8.0, featurin
 - JWT Authentication
 - Swagger/OpenAPI
 - Docker support
+- WebSockets
 
 ## 📋 Prerequisites
 
