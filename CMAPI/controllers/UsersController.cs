@@ -70,4 +70,23 @@ public class UsersController : ControllerBase
             return StatusCode(500, new { message = "Server error: " + ex.Message });
         }
     }
+
+    [HttpPut("UpdateProfile")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfile updateProfile){
+        if (!ModelState.IsValid)
+            return BadRequest(new { message = "Invalid data" });
+
+        try{
+            var isUpdated = await _usersService.UpdateProfile(updateProfile);
+            if (!isUpdated)
+                return NotFound(new { message = "User not found" });
+
+            return Ok(new { message = "Profile updated successfully" });
+        }
+        catch (DbUpdateException dbEx)
+        {
+            return StatusCode(500, new { message = "Database error: " + dbEx.Message });
+        }
+        
+    }
 }

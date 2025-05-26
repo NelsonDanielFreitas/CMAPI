@@ -91,4 +91,24 @@ public class UsersService
 
         return true;
     }
+
+    public async Task<bool> UpdateProfile(UpdateProfile updateProfile){
+        var existingUser = await _context.Users.FindAsync(updateProfile.Id);
+        if (existingUser == null)
+        {
+            return false;
+        }
+
+        existingUser.FirstName = updateProfile.FirstName;
+        existingUser.LastName = updateProfile.LastName;
+        existingUser.PhoneNumber = updateProfile.PhoneNumber;
+        if (!string.IsNullOrEmpty(updateProfile.Password))
+        {
+            existingUser.Password = BCrypt.Net.BCrypt.HashPassword(updateProfile.Password);
+        }
+        _context.Users.Update(existingUser);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
 }
