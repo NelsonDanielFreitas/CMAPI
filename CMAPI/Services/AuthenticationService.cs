@@ -159,6 +159,9 @@ public class AuthenticationService
             Email = user.Email,
             EmailVerified = user.EmailVerified,
             refreshToken = user.refreshToken,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            PhoneNumber = user.PhoneNumber,
             Role = new RoleDto {
                 RoleName = user.Role.RoleName
             }
