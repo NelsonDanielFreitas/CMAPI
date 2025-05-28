@@ -90,6 +90,7 @@ public class AuthenticationController : ControllerBase
     [HttpPost("refresh-token")]
     public async Task<IActionResult> RefreshToken()
     {
+        Console.WriteLine("Refresh token called");
         if (!Request.Cookies.TryGetValue("refreshToken", out string providedRefreshToken))
         {
             return Unauthorized(new { message = "Refresh token missing. Please login again." });

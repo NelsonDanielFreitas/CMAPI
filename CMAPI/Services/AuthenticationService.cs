@@ -173,7 +173,9 @@ public class AuthenticationService
     
     public async Task<RefreshTokenDTO?> RefreshTokenAsync(string providedEncryptedRefreshToken)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.refreshToken == providedEncryptedRefreshToken);
+        var user = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.refreshToken == providedEncryptedRefreshToken);
         if (user == null)
         {
             return null; 
