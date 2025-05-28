@@ -85,8 +85,32 @@ public class AuthenticationController : ControllerBase
 
         return Ok(new { message = "Email verified successfully" });
     }
-    
-    
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDTO request)
+    {
+        var result = await _authenticationService.ForgotPasswordAsync(request);
+        if (!result)
+        {
+            return BadRequest(new { message = "Invalid email" });
+        }
+
+        return Ok(new { message = "Reset Code sent to email" });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDTO request)
+    {
+        var result = await _authenticationService.ResetPasswordAsync(request);
+        if (!result)
+        {
+            return BadRequest(new { message = "Invalid reset code" });
+        }
+
+        return Ok(new { message = "Password reset successfully" });
+    }
+
+
     [HttpPost("refresh-token")]
     public async Task<IActionResult> RefreshToken()
     {

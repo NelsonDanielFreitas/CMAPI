@@ -169,7 +169,68 @@ public class AuthenticationService
 
         return new AuthenticationResult { User = dto };
     }
+
+    public async Task<bool> ForgotPasswordAsync(ForgotPasswordDTO request)
+    {
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+        if (user == null)
+        {
+            return false;
+        }
+
+        var resetCode = new Random().Next(100000, 999999).ToString();
+        user.PasswordResetCode = resetCode;
+        user.PasswordResetCodeExpiry = DateTime.UtcNow.AddHours(1);
+        await _context.SaveChangesAsync();
+
+        SendResetPasswordEmail(user.Email, resetCode);
+        return true;
+    }
+
+    public async Task<bool> ResetPasswordAsync(ResetPasswordDTO request)
+    {
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+        if (user == null || user.PasswordResetCode != request.ResetCode)
+        {
+            return false;
+        }
+
+        if (user.PasswordResetCodeExpiry < DateTime.UtcNow)
+        {
+            return false;
+        }
+
+        user.Password = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        user.PasswordResetCode = null;
+        user.PasswordResetCodeExpiry = null;
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
     
+    
+    private void SendResetPasswordEmail(string email, string code)
+    {
+        var fromAddress = new MailAddress(_config["Email:Username"], "Your App");
+        var toAddress = new MailAddress(email);
+        const string subject = "Reset Password";
+        string body = $"Your reset code is: {code}";
+
+        var smtp = new SmtpClient
+        {
+            Host = "smtp.gmail.com",
+            Port = 587,
+            EnableSsl = true,
+            Credentials = new NetworkCredential(_config["Email:Username"], _config["Email:Password"])
+        };
+
+        using var message = new MailMessage(fromAddress, toAddress)
+        {
+            Subject = subject,
+            Body = body,
+        };
+        smtp.Send(message);
+    }
     
     public async Task<RefreshTokenDTO?> RefreshTokenAsync(string providedEncryptedRefreshToken)
     {

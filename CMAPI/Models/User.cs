@@ -19,6 +19,10 @@ public class User
     public string FirstName { get; set; }
     public string LastName { get; set; }
     public string PhoneNumber { get; set; }
+    
+    public string? PasswordResetCode { get; set; }
+    
+    public DateTime? PasswordResetCodeExpiry { get; set; }
 
     public Role Role { get; set; }
     public ICollection<MultiFactoring> MultiFactorings { get; set; }
