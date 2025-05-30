@@ -2,6 +2,10 @@ using CMAPI.DTO.Avaria;
 using CMAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Collections.Concurrent;
 
 namespace CMAPI.controllers;
 [Route("api/avaria")]
@@ -11,11 +15,19 @@ public class AvariaController : ControllerBase
 {
     private readonly AvariaService _avariaService;
     private readonly JwtService _jwtService;
+    private readonly IDistributedCache _cache;
+    private const string CACHE_KEY_PREFIX = "avarias_user_";
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
-    public AvariaController(AvariaService avariaService, JwtService jwtService)
+    public AvariaController(AvariaService avariaService, JwtService jwtService, IDistributedCache cache)
     {
         _avariaService = avariaService;
         _jwtService = jwtService;
+        _cache = cache;
     }
     
     [HttpPost("CreateTipoUrgencia")]
@@ -78,7 +90,11 @@ public class AvariaController : ControllerBase
             var isCreated = await _avariaService.AddAvariaAsync(avaria, savedPath, userId);
 
             if (isCreated)
+            {
+                // Invalidate cache for this user
+                await _cache.RemoveAsync($"{CACHE_KEY_PREFIX}{userId}");
                 return Ok(new { message = "Avaria adicionada com sucesso" });
+            }
             else
                 return BadRequest(new { message = "Erro ao adicionar avaria" });
             
@@ -101,18 +117,48 @@ public class AvariaController : ControllerBase
 
         try
         {
-            // 1. Extract the userId string from the token
             var userId = _jwtService.GetUserIdFromToken(token);
+            var cacheKey = $"{CACHE_KEY_PREFIX}{userId}";
 
-            // 2. Await the async service method so that 'avarias' is a real IEnumerable<AvariaDTO>
+            // Try to get from cache first with optimized serialization
+            var cachedData = await _cache.GetStringAsync(cacheKey);
+            if (!string.IsNullOrEmpty(cachedData))
+            {
+                var cachedAvaria = JsonSerializer.Deserialize<List<AvariaDTO>>(cachedData, _jsonOptions);
+                return Ok(cachedAvaria);
+            }
+
+            // If not in cache, get from database with optimized settings
             var avarias = await _avariaService.GetAllAvariaByRoleUserAsync(userId);
 
-            // 3. Return the DTOs to the caller
-            return Ok(avarias);
+            // Optimize the data before caching
+            var optimizedAvaria = avarias.Select(a => new AvariaDTO
+            {
+                Id = a.Id,
+                Descricao = a.Descricao,
+                Photo = a.Photo,
+                IdStatus = a.IdStatus,
+                IdUrgencia = a.IdUrgencia,
+                CreatedAt = a.CreatedAt,
+                UserId = a.UserId,
+                TechinicianId = a.TechinicianId,
+                AssetId = a.AssetId,
+                Localizacao = a.Localizacao,
+                TempoResolverAvaria = a.TempoResolverAvaria
+            }).ToList();
+
+            // Cache the results with optimized settings
+            var cacheOptions = new DistributedCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(5))
+                .SetSlidingExpiration(TimeSpan.FromMinutes(2));
+
+            var serializedData = JsonSerializer.Serialize(optimizedAvaria, _jsonOptions);
+            await _cache.SetStringAsync(cacheKey, serializedData, cacheOptions);
+
+            return Ok(optimizedAvaria);
         }
         catch (ArgumentException ex)
         {
-            // optional: more granular error handling if you want
             return BadRequest(new { message = ex.Message });
         }
         catch (KeyNotFoundException ex)
@@ -121,7 +167,6 @@ public class AvariaController : ControllerBase
         }
         catch (Exception)
         {
-            // don’t expose internal details in production
             return StatusCode(500, "Internal Server Error");
         }
     }
@@ -146,7 +191,7 @@ public class AvariaController : ControllerBase
         }
         catch (Exception)
         {
-            // don’t expose internal details in production
+            // don't expose internal details in production
             return StatusCode(500, "Internal Server Error");
         }
     }
