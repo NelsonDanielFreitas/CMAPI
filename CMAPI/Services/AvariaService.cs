@@ -496,4 +496,197 @@ public class AvariaService
     }
 
     public string GetStorageRoot() => _storageRoot;
+
+    public async Task<TechnicianStatsDTO> GetTechnicianStatsAsync(Guid technicianId, DateTime? startDate = null, DateTime? endDate = null)
+    {
+        // Set default date range if not provided (last 6 months)
+        startDate ??= DateTime.UtcNow.AddMonths(-6);
+        endDate ??= DateTime.UtcNow;
+
+        // Get technician info
+        var technician = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == technicianId);
+
+        if (technician == null)
+            throw new KeyNotFoundException($"Technician with ID {technicianId} not found");
+
+        // Get all avarias for this technician within date range
+        var avarias = await _context.Avaria
+            .AsNoTracking()
+            .Include(a => a.Urgencia)
+            .Include(a => a.Status)
+            .Where(a => a.TechnicianId == technicianId && 
+                       a.CreatedAt >= startDate && 
+                       a.CreatedAt <= endDate)
+            .ToListAsync();
+
+        // Calculate basic stats
+        var resolvedAvaria = avarias.Where(a => a.Status.Name == "Resolvido").ToList();
+        var totalResolved = resolvedAvaria.Count;
+        
+        // Calculate average resolution time
+        var avgResolutionTime = resolvedAvaria.Any() 
+            ? resolvedAvaria.Average(a => a.TempoResolverAvaria.TotalHours)
+            : 0;
+
+        // Calculate on-time vs delayed resolutions
+        var onTimeResolutions = resolvedAvaria.Count(a => 
+            a.TempoResolverAvaria <= TimeSpan.FromHours(24)); // Assuming 24h is the target
+        var delayedResolutions = totalResolved - onTimeResolutions;
+
+        // Calculate stats by avaria type
+        var avariaTypeStats = resolvedAvaria
+            .GroupBy(a => a.Urgencia.Name)
+            .Select(g => new AvariaTypeStatsDTO
+            {
+                AvariaType = g.Key,
+                Count = g.Count(),
+                AverageResolutionTime = g.Average(a => a.TempoResolverAvaria.TotalHours)
+            })
+            .ToList();
+
+        // Calculate monthly stats
+        var monthlyStats = resolvedAvaria
+            .GroupBy(a => new { a.CreatedAt.Year, a.CreatedAt.Month })
+            .Select(g => new MonthlyStatsDTO
+            {
+                Year = g.Key.Year,
+                Month = g.Key.Month,
+                TotalAvariaResolved = g.Count(),
+                AverageResolutionTime = g.Average(a => a.TempoResolverAvaria.TotalHours),
+                OnTimeResolutions = g.Count(a => a.TempoResolverAvaria <= TimeSpan.FromHours(24)),
+                DelayedResolutions = g.Count(a => a.TempoResolverAvaria > TimeSpan.FromHours(24))
+            })
+            .OrderByDescending(m => m.Year)
+            .ThenByDescending(m => m.Month)
+            .ToList();
+
+        return new TechnicianStatsDTO
+        {
+            TechnicianId = technician.Id,
+            TechnicianName = $"{technician.FirstName} {technician.LastName}",
+            TotalAvariaResolved = totalResolved,
+            AverageResolutionTime = avgResolutionTime,
+            OnTimeResolutions = onTimeResolutions,
+            DelayedResolutions = delayedResolutions,
+            AvariaTypeStats = avariaTypeStats,
+            MonthlyStats = monthlyStats
+        };
+    }
+
+    public async Task<IEnumerable<TechnicianStatsDTO>> GetAllTechniciansStatsAsync(DateTime? startDate = null, DateTime? endDate = null)
+    {
+        // Set default date range if not provided (last 6 months)
+        startDate ??= DateTime.UtcNow.AddMonths(-6);
+        endDate ??= DateTime.UtcNow;
+
+        // Get all technicians with their avarias in a single query
+        var technicians = await _context.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .Where(u => u.Role.RoleName == "TECNICO")
+            .Select(u => new
+            {
+                Technician = u,
+                Avaria = _context.Avaria
+                    .AsNoTracking()
+                    .Include(a => a.Urgencia)
+                    .Include(a => a.Status)
+                    .Where(a => a.TechnicianId == u.Id && 
+                               a.CreatedAt >= startDate && 
+                               a.CreatedAt <= endDate)
+                    .ToList()
+            })
+            .ToListAsync();
+
+        var stats = new List<TechnicianStatsDTO>();
+
+        foreach (var tech in technicians)
+        {
+            var resolvedAvaria = tech.Avaria.Where(a => a.Status.Name == "Concluído").ToList();
+            var totalResolved = resolvedAvaria.Count;
+            
+            var avgResolutionTime = resolvedAvaria.Any() 
+                ? resolvedAvaria.Average(a => a.TempoResolverAvaria.TotalHours)
+                : 0;
+
+            var onTimeResolutions = resolvedAvaria.Count(a => 
+                a.TempoResolverAvaria <= TimeSpan.FromHours(24));
+            var delayedResolutions = totalResolved - onTimeResolutions;
+
+            var avariaTypeStats = resolvedAvaria
+                .GroupBy(a => a.Urgencia.Name)
+                .Select(g => new AvariaTypeStatsDTO
+                {
+                    AvariaType = g.Key,
+                    Count = g.Count(),
+                    AverageResolutionTime = g.Average(a => a.TempoResolverAvaria.TotalHours)
+                })
+                .ToList();
+
+            var monthlyStats = resolvedAvaria
+                .GroupBy(a => new { a.CreatedAt.Year, a.CreatedAt.Month })
+                .Select(g => new MonthlyStatsDTO
+                {
+                    Year = g.Key.Year,
+                    Month = g.Key.Month,
+                    TotalAvariaResolved = g.Count(),
+                    AverageResolutionTime = g.Average(a => a.TempoResolverAvaria.TotalHours),
+                    OnTimeResolutions = g.Count(a => a.TempoResolverAvaria <= TimeSpan.FromHours(24)),
+                    DelayedResolutions = g.Count(a => a.TempoResolverAvaria > TimeSpan.FromHours(24))
+                })
+                .OrderByDescending(m => m.Year)
+                .ThenByDescending(m => m.Month)
+                .ToList();
+
+            stats.Add(new TechnicianStatsDTO
+            {
+                TechnicianId = tech.Technician.Id,
+                TechnicianName = $"{tech.Technician.FirstName} {tech.Technician.LastName}",
+                TotalAvariaResolved = totalResolved,
+                AverageResolutionTime = avgResolutionTime,
+                OnTimeResolutions = onTimeResolutions,
+                DelayedResolutions = delayedResolutions,
+                AvariaTypeStats = avariaTypeStats,
+                MonthlyStats = monthlyStats
+            });
+        }
+
+        return stats;
+    }
+
+    public async Task<Dictionary<string, int>> GetAvariaTypeFrequencyAsync(DateTime? startDate = null, DateTime? endDate = null)
+    {
+        // Set default date range if not provided (last 6 months)
+        startDate ??= DateTime.UtcNow.AddMonths(-6);
+        endDate ??= DateTime.UtcNow;
+
+        var frequency = await _context.Avaria
+            .AsNoTracking()
+            .Include(a => a.Urgencia)
+            .Where(a => a.CreatedAt >= startDate && a.CreatedAt <= endDate)
+            .GroupBy(a => a.Urgencia.Name)
+            .Select(g => new { Type = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Type, x => x.Count);
+
+        return frequency;
+    }
+
+    public async Task<double> GetGlobalAverageResolutionTimeAsync(DateTime? startDate = null, DateTime? endDate = null)
+    {
+        // Set default date range if not provided (last 6 months)
+        startDate ??= DateTime.UtcNow.AddMonths(-6);
+        endDate ??= DateTime.UtcNow;
+
+        var avgTime = await _context.Avaria
+            .AsNoTracking()
+            .Include(a => a.Status)
+            .Where(a => a.Status.Name == "Concluído" && 
+                       a.CreatedAt >= startDate && 
+                       a.CreatedAt <= endDate)
+            .AverageAsync(a => a.TempoResolverAvaria.TotalHours);
+
+        return avgTime;
+    }
 }

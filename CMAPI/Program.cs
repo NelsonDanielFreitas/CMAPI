@@ -33,6 +33,8 @@ builder.Services.AddScoped<AvariaService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<UsersService>();
 builder.Services.AddScoped<AssetService>();
+builder.Services.AddScoped<PDFReportService>();
+builder.Services.AddScoped<OllamaService>();
 
 // WebSocket Services
 builder.Services.AddSingleton<WebSocketConnectionManager>();

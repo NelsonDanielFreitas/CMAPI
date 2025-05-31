@@ -19,6 +19,7 @@ public class AvariaController : ControllerBase
     private readonly AvariaService _avariaService;
     private readonly JwtService _jwtService;
     private readonly IDistributedCache _cache;
+    private readonly PDFReportService _pdfReportService;
     private const string CACHE_KEY_PREFIX = "avarias_user_";
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -26,11 +27,12 @@ public class AvariaController : ControllerBase
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public AvariaController(AvariaService avariaService, JwtService jwtService, IDistributedCache cache)
+    public AvariaController(AvariaService avariaService, JwtService jwtService, IDistributedCache cache, PDFReportService pdfReportService)
     {
         _avariaService = avariaService;
         _jwtService = jwtService;
         _cache = cache;
+        _pdfReportService = pdfReportService;
     }
     
     [HttpPost("CreateTipoUrgencia")]
@@ -237,6 +239,103 @@ public class AvariaController : ControllerBase
         catch (Exception ex)
         {
             return BadRequest(new { message = "Internal Server Error" });
+        }
+    }
+
+    [HttpGet("GetTechnicianStats/{technicianId}")]
+    public async Task<IActionResult> GetTechnicianStats(Guid technicianId, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    {
+        try
+        {
+            var stats = await _avariaService.GetTechnicianStatsAsync(technicianId, startDate, endDate);
+            return Ok(stats);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, "Internal Server Error");
+        }
+    }
+
+    [HttpGet("GetAllTechniciansStats")]
+    public async Task<IActionResult> GetAllTechniciansStats([FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    {
+        try
+        {
+            var stats = await _avariaService.GetAllTechniciansStatsAsync(startDate, endDate);
+            return Ok(stats);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, "Internal Server Error");
+        }
+    }
+
+    [HttpGet("GetAvariaTypeFrequency")]
+    public async Task<IActionResult> GetAvariaTypeFrequency([FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    {
+        try
+        {
+            var frequency = await _avariaService.GetAvariaTypeFrequencyAsync(startDate, endDate);
+            return Ok(frequency);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, "Internal Server Error");
+        }
+    }
+
+    [HttpGet("GetGlobalAverageResolutionTime")]
+    public async Task<IActionResult> GetGlobalAverageResolutionTime([FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    {
+        try
+        {
+            var avgTime = await _avariaService.GetGlobalAverageResolutionTimeAsync(startDate, endDate);
+            return Ok(new { AverageResolutionTimeHours = avgTime });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, "Internal Server Error");
+        }
+    }
+
+    [HttpGet("GenerateTechnicianStatsReport")]
+    public async Task<IActionResult> GenerateTechnicianStatsReport([FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    {
+        try
+        {
+            // Set default date range if not provided (last 6 months)
+            startDate ??= DateTime.UtcNow.AddMonths(-6);
+            endDate ??= DateTime.UtcNow;
+
+            // Get statistics
+            var stats = await _avariaService.GetAllTechniciansStatsAsync(startDate, endDate);
+
+            // Generate PDF report
+            var reportPath = await _pdfReportService.GenerateTechnicianStatsReportAsync(stats, startDate.Value, endDate.Value);
+
+            // Get the full path
+            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", reportPath);
+
+            // Check if file exists
+            if (!System.IO.File.Exists(fullPath))
+                return NotFound(new { message = "Report file not found" });
+
+            // Get file bytes
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(fullPath);
+
+            // Get file name
+            var fileName = Path.GetFileName(fullPath);
+
+            // Return file
+            return File(fileBytes, "application/pdf", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Error generating report", error = ex.Message });
         }
     }
 } 
