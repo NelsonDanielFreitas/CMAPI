@@ -277,70 +277,62 @@ public class AvariaService
         if (!Guid.TryParse(userIdString, out var userId))
             throw new ArgumentException("Invalid UserId GUID", nameof(userIdString));
 
-        // 2) Load user and role
+        // 2) Load user and role with optimized query
         var user = await _context.Users
+            .AsNoTracking()
             .Include(u => u.Role)
+            .Select(u => new { u.Id, u.Role.RoleName })
             .SingleOrDefaultAsync(u => u.Id == userId);
         if (user == null)
             throw new KeyNotFoundException("User not found");
 
-        // 3) Build base query depending on role
-        IQueryable<Avaria> query = user.Role.RoleName switch
+        // 3) Build base query depending on role with optimized includes
+        IQueryable<Avaria> query = user.RoleName switch
         {
-            "ADMIN"      => _context.Avaria,
+            "ADMIN" => _context.Avaria,
             "TECNICO" => _context.Avaria.Where(a => a.TechnicianId == userId),
-            "CLIENTE"     => _context.Avaria.Where(a => a.UserId       == userId),
-            _            => throw new InvalidOperationException($"Unknown role '{user.Role.RoleName}'")
+            "CLIENTE" => _context.Avaria.Where(a => a.UserId == userId),
+            _ => throw new InvalidOperationException($"Unknown role '{user.RoleName}'")
         };
 
-        // 4) Project into DTO
+        // 4) Project into DTO with optimized includes and select only needed fields
         var dtos = await query
-            .Include(a => a.User)
-            .Include(a => a.Technician)
-            .Include(a => a.Urgencia)
-            .Include(a => a.Status)
-            .Include(a => a.Asset)
+            .AsNoTracking()
             .Select(a => new AvariaDTO
             {
                 Id = a.Id,
                 UserId = new User2DTO
                 {
-                    Id        = a.User.Id,
+                    Id = a.User.Id,
                     FirstName = a.User.FirstName,
-                    LastName  = a.User.LastName
+                    LastName = a.User.LastName
                 },
                 TechinicianId = a.Technician == null ? null : new TechinicianDTO
                 {
-                    Id        = a.Technician.Id,
+                    Id = a.Technician.Id,
                     FirstName = a.Technician.FirstName,
-                    LastName  = a.Technician.LastName
+                    LastName = a.Technician.LastName
                 },
                 IdUrgencia = new TipoUrgenciaDTO
                 {
-                    Id   = a.Urgencia.Id,
+                    Id = a.Urgencia.Id,
                     Name = a.Urgencia.Name
                 },
                 IdStatus = new StatusAvariaDTO
                 {
-                    Id   = a.Status.Id,
+                    Id = a.Status.Id,
                     Name = a.Status.Name
                 },
                 AssetId = a.Asset == null ? null : new AssetDTO
                 {
-                    Id   = a.Asset.Id,
+                    Id = a.Asset.Id,
                     Name = a.Asset.Name,
                 },
-                Descricao           = a.Descricao,
-                Photo               = string.IsNullOrEmpty(a.Photo)
-                    ? null
-                    : Convert.ToBase64String(
-                        File.ReadAllBytes(
-                            Path.Combine(_storageRoot, Path.GetFileName(a.Photo))
-                        )
-                    ),
+                Descricao = a.Descricao,
+                Photo = a.Photo, // Just return the path, don't convert to base64 here
                 TempoResolverAvaria = a.TempoResolverAvaria,
-                CreatedAt           = a.CreatedAt,
-                Localizacao         = a.Localizacao
+                CreatedAt = a.CreatedAt,
+                Localizacao = a.Localizacao
             })
             .ToListAsync();
 
@@ -502,4 +494,6 @@ public class AvariaService
         
         return true;
     }
+
+    public string GetStorageRoot() => _storageRoot;
 }

@@ -6,6 +6,9 @@ using Microsoft.Extensions.Caching.Distributed;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Collections.Concurrent;
+using System.IO;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace CMAPI.controllers;
 [Route("api/avaria")]
@@ -120,7 +123,7 @@ public class AvariaController : ControllerBase
             var userId = _jwtService.GetUserIdFromToken(token);
             var cacheKey = $"{CACHE_KEY_PREFIX}{userId}";
 
-            // Try to get from cache first with optimized serialization
+            // Try to get from cache first
             var cachedData = await _cache.GetStringAsync(cacheKey);
             if (!string.IsNullOrEmpty(cachedData))
             {
@@ -128,15 +131,27 @@ public class AvariaController : ControllerBase
                 return Ok(cachedAvaria);
             }
 
-            // If not in cache, get from database with optimized settings
+            // If not in cache, get from database
             var avarias = await _avariaService.GetAllAvariaByRoleUserAsync(userId);
 
-            // Optimize the data before caching
-            var optimizedAvaria = avarias.Select(a => new AvariaDTO
+            // Process images in parallel for better performance
+            var optimizedAvaria = await Task.WhenAll(avarias.Select(async a => new AvariaDTO
             {
                 Id = a.Id,
                 Descricao = a.Descricao,
-                Photo = a.Photo,
+                Photo = string.IsNullOrEmpty(a.Photo) ? null : 
+                    await Task.Run(() => {
+                        try {
+                            var imagePath = Path.Combine(_avariaService.GetStorageRoot(), Path.GetFileName(a.Photo));
+                            if (System.IO.File.Exists(imagePath)) {
+                                return Convert.ToBase64String(System.IO.File.ReadAllBytes(imagePath));
+                            }
+                            return null;
+                        }
+                        catch {
+                            return null;
+                        }
+                    }),
                 IdStatus = a.IdStatus,
                 IdUrgencia = a.IdUrgencia,
                 CreatedAt = a.CreatedAt,
@@ -145,7 +160,7 @@ public class AvariaController : ControllerBase
                 AssetId = a.AssetId,
                 Localizacao = a.Localizacao,
                 TempoResolverAvaria = a.TempoResolverAvaria
-            }).ToList();
+            }));
 
             // Cache the results with optimized settings
             var cacheOptions = new DistributedCacheEntryOptions()
