@@ -32,6 +32,7 @@ public class UsersService
                 FirstName = a.FirstName,
                 LastName = a.LastName,
                 PhoneNumber = a.PhoneNumber,
+                isActive = a.isActive,
                 RoleId = a.Role == null
                     ? null
                     : new RoleDto
@@ -83,6 +84,7 @@ public class UsersService
         existingUser.LastName    = updateUser.LastName;
         existingUser.Email       = updateUser.Email;
         existingUser.PhoneNumber = updateUser.PhoneNumber;
+        existingUser.isActive    = updateUser.isActive;
         // If you meant to allow changing roles, uncomment & use this:
         existingUser.IdRole = updateUser.RoleId;
 

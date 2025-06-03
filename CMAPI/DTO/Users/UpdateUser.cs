@@ -8,4 +8,5 @@ public class UpdateUser
     public string LastName { get; set; }
     public Guid RoleId { get; set; }
     public string PhoneNumber { get; set; }
+    public bool isActive { get; set; }
 }
