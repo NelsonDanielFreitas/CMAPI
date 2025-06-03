@@ -111,6 +111,11 @@ public class AuthenticationService
             return new AuthenticationResult { User = null };
         }
 
+        if (!user.isActive)
+        {
+            return new AuthenticationResult { User = null };
+        }
+
         if (user.LockoutEndTime.HasValue && user.LockoutEndTime > DateTime.UtcNow)
         {
             return new AuthenticationResult
@@ -265,5 +270,12 @@ public class AuthenticationService
             //EncryptedRefreshToken = newEncryptedRefreshToken
             EncryptedRefreshToken = user.refreshToken
         };
+    }
+
+    public async Task<User?> GetUserByEmail(string email)
+    {
+        return await _context.Users
+            .Include(u => u.Role)
+            .SingleOrDefaultAsync(u => u.Email == email);
     }
 }

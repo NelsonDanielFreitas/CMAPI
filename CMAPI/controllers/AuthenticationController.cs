@@ -34,6 +34,11 @@ public class AuthenticationController : ControllerBase
 
         if (result.User == null)
         {
+            var user = await _authenticationService.GetUserByEmail(login.Email);
+            if (user != null && !user.isActive)
+            {
+                return BadRequest(new { message = "This account is inactive. Please contact support." });
+            }
             return BadRequest(new { message = "Invalid Email or password" });
         }
 
