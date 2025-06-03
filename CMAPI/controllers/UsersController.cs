@@ -1,5 +1,6 @@
 using CMAPI.DTO.Users;
 using CMAPI.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,6 +8,7 @@ namespace CMAPI.controllers;
 
 [Route("api/users")]
 [ApiController]
+[Authorize]
 public class UsersController : ControllerBase
 {
     private readonly UsersService _usersService;
@@ -35,7 +37,7 @@ public class UsersController : ControllerBase
         }
         catch (Exception)
         {
-            // don’t expose internal details in production
+            // don't expose internal details in production
             return StatusCode(500, "Internal Server Error");
         }
     }
@@ -88,5 +90,30 @@ public class UsersController : ControllerBase
             return StatusCode(500, new { message = "Database error: " + dbEx.Message });
         }
         
+    }
+
+    [HttpDelete]
+    [Authorize(Roles = "ADMIN")]
+    public async Task<IActionResult> DeleteUser([FromQuery] string id)
+    {
+        try
+        {
+            var (success, message) = await _usersService.DeleteUser(id);
+            
+            if (!success)
+            {
+                return BadRequest(new { message });
+            }
+
+            return Ok(new { message });
+        }
+        catch (FormatException)
+        {
+            return BadRequest(new { message = "Invalid user ID format" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An error occurred while processing your request" });
+        }
     }
 }

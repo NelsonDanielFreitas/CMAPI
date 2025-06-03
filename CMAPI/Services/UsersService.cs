@@ -113,4 +113,61 @@ public class UsersService
 
         return true;
     }
+
+    public async Task<(bool success, string message)> DeleteUser(string encryptedUserId)
+    {
+        try
+        {
+            // Replace spaces with plus signs and ensure proper base64 format
+            var sanitizedId = encryptedUserId.Replace(" ", "+");
+            
+            // Decrypt the incoming ID
+            var decryptedId = _crypto.Decrypt(sanitizedId);
+            Console.WriteLine(decryptedId);
+
+            // Try to parse it as a Guid
+            if (!Guid.TryParse(decryptedId, out var userId))
+            {
+                return (false, "Invalid user ID format");
+            }
+
+            // Look up the user by their Guid primary key
+            var user = await _context.Users
+                .Include(u => u.AvariaReported)
+                .Include(u => u.AvariaAssigned)
+                .Include(u => u.AvariaComentarios)
+                .Include(u => u.ChatMessagesSent)
+                .Include(u => u.MessagesRead)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+            {
+                return (false, "User not found");
+            }
+
+            // Check if user has any activity
+            bool hasActivity = user.AvariaReported.Any() || 
+                              user.AvariaAssigned.Any() || 
+                              user.AvariaComentarios.Any() || 
+                              user.ChatMessagesSent.Any() || 
+                              user.MessagesRead.Any();
+
+            if (hasActivity)
+            {
+                // Instead of deleting, mark as inactive
+                user.isActive = false;
+                await _context.SaveChangesAsync();
+                return (true, "User has activity history. Account has been deactivated instead of deleted.");
+            }
+
+            // If no activity, proceed with deletion
+            _context.Users.Remove(user);
+            await _context.SaveChangesAsync();
+            return (true, "User successfully deleted");
+        }
+        catch (Exception ex)
+        {
+            return (false, "An error occurred while processing the request");
+        }
+    }
 }
