@@ -1,233 +1,275 @@
-using iText.Kernel.Pdf;
-using iText.Layout;
-using iText.Layout.Element;
-using iText.Layout.Properties;
-using iText.Kernel.Colors;
-using iText.IO.Font.Constants;
-using iText.Kernel.Font;
+using DinkToPdf;
+using DinkToPdf.Contracts;
+using System.Text;
 using CMAPI.DTO.Avaria;
-using System.Globalization;
+using System.Net.Mail;
+using System.Net;
 
 namespace CMAPI.Services;
 
 public class PDFReportService
 {
     private readonly string _reportsDirectory;
+    private readonly IConverter _converter;
+    private readonly IConfiguration _configuration;
 
-    public PDFReportService(IConfiguration config)
+    public PDFReportService(IConfiguration config, IConverter converter)
     {
         _reportsDirectory = config.GetValue<string>("ReportsStorage:RootPath")
                        ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "reports");
+        _converter = converter;
+        _configuration = config;
+        
         if (!Directory.Exists(_reportsDirectory))
             Directory.CreateDirectory(_reportsDirectory);
     }
 
-    public async Task<string> GenerateTechnicianStatsReportAsync(IEnumerable<TechnicianStatsDTO> stats, DateTime startDate, DateTime endDate)
+    public async Task<string> GenerateAndSendTechnicianStatsReportAsync(IEnumerable<TechnicianStatsDTO> stats, DateTime startDate, DateTime endDate, string email)
     {
+        string filePath = null;
         try
         {
-            var fileName = $"technician_stats_{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
-            var filePath = Path.Combine(_reportsDirectory, fileName);
+            // Generate the PDF
+            filePath = await GenerateTechnicianStatsReportAsync(stats, startDate, endDate);
 
-            // Log the file path for debugging
-            if (!Directory.Exists(_reportsDirectory))
-                throw new Exception($"Reports directory does not exist: {_reportsDirectory}");
+            // Send the email
+            await SendEmailWithAttachmentAsync(email, filePath);
 
-            // Check if directory is writable
-            try
-            {
-                var testFile = Path.Combine(_reportsDirectory, "__test.txt");
-                await File.WriteAllTextAsync(testFile, "test");
-                File.Delete(testFile);
-            }
-            catch (Exception dirEx)
-            {
-                throw new Exception($"Cannot write to reports directory: {_reportsDirectory}. Error: {dirEx.Message}", dirEx);
-            }
-
-            // Log the file path
-            if (filePath.Length > 250)
-                throw new Exception($"File path too long: {filePath}");
-
-            // Defensive: ensure stats is not null
-            if (stats == null)
-                stats = new List<TechnicianStatsDTO>();
-
-            // Defensive: ensure all lists are not null
-            foreach (var s in stats)
-            {
-                s.AvariaTypeStats ??= new List<AvariaTypeStatsDTO>();
-                s.MonthlyStats ??= new List<MonthlyStatsDTO>();
-            }
-
-            try
-            {
-                // First, try to create a simple test PDF to verify iText7 is working
-                var testPdfPath = Path.Combine(_reportsDirectory, "test.pdf");
-                using (var testWriter = new PdfWriter(testPdfPath))
-                using (var testPdf = new PdfDocument(testWriter))
-                using (var testDoc = new Document(testPdf))
-                {
-                    testDoc.Add(new Paragraph("Test PDF"));
-                    testDoc.Close();
-                }
-
-                // If test PDF was created successfully, proceed with the actual report
-                using var writer = new PdfWriter(filePath);
-                using var pdf = new PdfDocument(writer);
-                using var document = new Document(pdf);
-
-                // Create and set font
-                var boldFont = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
-
-                // Add title
-                var title = new Paragraph("Relatório de Desempenho dos Técnicos")
-                    .SetTextAlignment(TextAlignment.CENTER)
-                    .SetFontSize(20)
-                    .SetFont(boldFont);
-                document.Add(title);
-
-                // Add date range
-                var dateRange = new Paragraph($"Período: {startDate:dd/MM/yyyy} - {endDate:dd/MM/yyyy}")
-                    .SetTextAlignment(TextAlignment.CENTER)
-                    .SetFontSize(12)
-                    .SetMarginBottom(20);
-                document.Add(dateRange);
-
-                // Add global statistics
-                var globalStats = new Paragraph("Estatísticas Globais")
-                    .SetFontSize(16)
-                    .SetFont(boldFont)
-                    .SetMarginTop(20);
-                document.Add(globalStats);
-
-                var totalResolved = stats.Sum(s => s.TotalAvariaResolved);
-                var avgResolutionTime = stats.Any() ? stats.Average(s => s.AverageResolutionTime) : 0;
-                var totalOnTime = stats.Sum(s => s.OnTimeResolutions);
-                var totalDelayed = stats.Sum(s => s.DelayedResolutions);
-
-                var globalStatsTable = new Table(2)
-                    .SetWidth(UnitValue.CreatePercentValue(100))
-                    .SetMarginBottom(20);
-
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph("Total de Avarias Resolvidas").SetFont(boldFont)));
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph(totalResolved.ToString())));
-
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph("Tempo Médio de Resolução").SetFont(boldFont)));
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph($"{avgResolutionTime:F2} horas")));
-
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph("Resoluções no Prazo").SetFont(boldFont)));
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph(totalOnTime.ToString())));
-
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph("Resoluções com Atraso").SetFont(boldFont)));
-                globalStatsTable.AddCell(new Cell().Add(new Paragraph(totalDelayed.ToString())));
-
-                document.Add(globalStatsTable);
-
-                // Add individual technician statistics
-                foreach (var tech in stats)
-                {
-                    var techTitle = new Paragraph($"Técnico: {tech.TechnicianName}")
-                        .SetFontSize(14)
-                        .SetFont(boldFont)
-                        .SetMarginTop(20);
-                    document.Add(techTitle);
-
-                    var techStatsTable = new Table(2)
-                        .SetWidth(UnitValue.CreatePercentValue(100))
-                        .SetMarginBottom(20);
-
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph("Total de Avarias Resolvidas").SetFont(boldFont)));
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph(tech.TotalAvariaResolved.ToString())));
-
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph("Tempo Médio de Resolução").SetFont(boldFont)));
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph($"{tech.AverageResolutionTime:F2} horas")));
-
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph("Resoluções no Prazo").SetFont(boldFont)));
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph(tech.OnTimeResolutions.ToString())));
-
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph("Resoluções com Atraso").SetFont(boldFont)));
-                    techStatsTable.AddCell(new Cell().Add(new Paragraph(tech.DelayedResolutions.ToString())));
-
-                    document.Add(techStatsTable);
-
-                    // Add avaria type statistics
-                    if (tech.AvariaTypeStats.Any())
-                    {
-                        var typeTitle = new Paragraph("Estatísticas por Tipo de Avaria")
-                            .SetFontSize(12)
-                            .SetFont(boldFont)
-                            .SetMarginTop(10);
-                        document.Add(typeTitle);
-
-                        var typeTable = new Table(3)
-                            .SetWidth(UnitValue.CreatePercentValue(100))
-                            .SetMarginBottom(20);
-
-                        typeTable.AddHeaderCell(new Cell().Add(new Paragraph("Tipo de Avaria").SetFont(boldFont)));
-                        typeTable.AddHeaderCell(new Cell().Add(new Paragraph("Quantidade").SetFont(boldFont)));
-                        typeTable.AddHeaderCell(new Cell().Add(new Paragraph("Tempo Médio (horas)").SetFont(boldFont)));
-
-                        foreach (var type in tech.AvariaTypeStats)
-                        {
-                            typeTable.AddCell(new Cell().Add(new Paragraph(type.AvariaType)));
-                            typeTable.AddCell(new Cell().Add(new Paragraph(type.Count.ToString())));
-                            typeTable.AddCell(new Cell().Add(new Paragraph($"{type.AverageResolutionTime:F2}")));
-                        }
-
-                        document.Add(typeTable);
-                    }
-
-                    // Add monthly statistics
-                    if (tech.MonthlyStats.Any())
-                    {
-                        var monthlyTitle = new Paragraph("Estatísticas Mensais")
-                            .SetFontSize(12)
-                            .SetFont(boldFont)
-                            .SetMarginTop(10);
-                        document.Add(monthlyTitle);
-
-                        var monthlyTable = new Table(5)
-                            .SetWidth(UnitValue.CreatePercentValue(100))
-                            .SetMarginBottom(20);
-
-                        monthlyTable.AddHeaderCell(new Cell().Add(new Paragraph("Mês/Ano").SetFont(boldFont)));
-                        monthlyTable.AddHeaderCell(new Cell().Add(new Paragraph("Total Resolvidas").SetFont(boldFont)));
-                        monthlyTable.AddHeaderCell(new Cell().Add(new Paragraph("Tempo Médio").SetFont(boldFont)));
-                        monthlyTable.AddHeaderCell(new Cell().Add(new Paragraph("No Prazo").SetFont(boldFont)));
-                        monthlyTable.AddHeaderCell(new Cell().Add(new Paragraph("Com Atraso").SetFont(boldFont)));
-
-                        foreach (var month in tech.MonthlyStats)
-                        {
-                            monthlyTable.AddCell(new Cell().Add(new Paragraph($"{month.Month}/{month.Year}")));
-                            monthlyTable.AddCell(new Cell().Add(new Paragraph(month.TotalAvariaResolved.ToString())));
-                            monthlyTable.AddCell(new Cell().Add(new Paragraph($"{month.AverageResolutionTime:F2} horas")));
-                            monthlyTable.AddCell(new Cell().Add(new Paragraph(month.OnTimeResolutions.ToString())));
-                            monthlyTable.AddCell(new Cell().Add(new Paragraph(month.DelayedResolutions.ToString())));
-                        }
-
-                        document.Add(monthlyTable);
-                    }
-                }
-
-                document.Close();
-
-                return Path.Combine("reports", fileName).Replace("\\", "/");
-            }
-            catch (IOException ioEx)
-            {
-                throw new Exception($"IO Error creating PDF: {ioEx.Message}", ioEx);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error creating PDF: {ex.Message}", ex);
-            }
+            return filePath;
         }
         catch (Exception ex)
         {
-            // Log the full exception details (optionally use a logger)
-            var errorMsg = $"PDF generation failed: {ex.Message}\n{ex.StackTrace}";
-            throw new Exception(errorMsg, ex);
+            if (filePath != null && File.Exists(filePath))
+            {
+                try { File.Delete(filePath); } catch { }
+            }
+            throw new Exception($"Error creating and sending PDF: {ex.Message}", ex);
         }
+    }
+
+    private async Task SendEmailWithAttachmentAsync(string recipientEmail, string pdfPath)
+    {
+        try
+        {
+            using var message = new MailMessage();
+            message.From = new MailAddress(_configuration["Email:Username"], "CMAPI Reports");
+            message.To.Add(recipientEmail);
+            message.Subject = "Relatório de Desempenho dos Técnicos";
+            message.Body = "Segue em anexo o relatório de desempenho dos técnicos solicitado.";
+            message.IsBodyHtml = false;
+
+            // Attach the PDF
+            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", pdfPath);
+            message.Attachments.Add(new Attachment(fullPath));
+
+            var smtp = new SmtpClient
+            {
+                Host = "smtp.gmail.com",
+                Port = 587,
+                EnableSsl = true,
+                Credentials = new NetworkCredential(_configuration["Email:Username"], _configuration["Email:Password"])
+            };
+
+            await smtp.SendMailAsync(message);
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"Error sending email: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<string> GenerateTechnicianStatsReportAsync(IEnumerable<TechnicianStatsDTO> stats, DateTime startDate, DateTime endDate)
+    {
+        string filePath = null;
+        try
+        {
+            var fileName = $"technician_stats_{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
+            filePath = Path.Combine(_reportsDirectory, fileName);
+
+            // Generate HTML content
+            var htmlContent = GenerateHtmlContent(stats);
+
+            // Configure PDF conversion settings
+            var doc = new HtmlToPdfDocument()
+            {
+                GlobalSettings = {
+                    ColorMode = ColorMode.Color,
+                    Orientation = Orientation.Portrait,
+                    PaperSize = PaperKind.A4,
+                    Margins = new MarginSettings { Top = 10, Bottom = 10, Left = 10, Right = 10 },
+                    Out = filePath
+                },
+                Objects = {
+                    new ObjectSettings
+                    {
+                        PagesCount = true,
+                        HtmlContent = htmlContent,
+                        WebSettings = { DefaultEncoding = "utf-8" },
+                        HeaderSettings = { FontSize = 9, Right = "Page [page] of [toPage]", Line = true },
+                        UseLocalLinks = true
+                    }
+                }
+            };
+
+            // Convert HTML to PDF
+            _converter.Convert(doc);
+
+            return Path.Combine("reports", fileName).Replace("\\", "/");
+        }
+        catch (Exception ex)
+        {
+            if (File.Exists(filePath))
+            {
+                try { File.Delete(filePath); } catch { }
+            }
+            throw new Exception($"Error creating PDF: {ex.Message}", ex);
+        }
+    }
+
+    private string GenerateHtmlContent(IEnumerable<TechnicianStatsDTO> stats)
+    {
+        var html = new StringBuilder();
+        html.Append(@"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset='utf-8'>
+                <style>
+                    body { font-family: Arial, sans-serif; }
+                    .header { text-align: center; margin-bottom: 20px; }
+                    .title { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
+                    .subtitle { font-size: 18px; margin-bottom: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    th { background-color: #f2f2f2; }
+                    .section { margin-top: 30px; }
+                    .section-title { font-size: 20px; font-weight: bold; margin-bottom: 15px; }
+                </style>
+            </head>
+            <body>
+                <div class='header'>
+                    <div class='title'>Relatório de Desempenho dos Técnicos</div>
+                    <div class='subtitle'>Estatísticas Gerais</div>
+                </div>");
+
+        // Global Statistics
+        var totalResolved = stats.Sum(s => s.TotalAvariaResolved);
+        var avgResolutionTime = stats.Any() ? stats.Average(s => s.AverageResolutionTime) : 0;
+        var totalOnTime = stats.Sum(s => s.OnTimeResolutions);
+        var totalDelayed = stats.Sum(s => s.DelayedResolutions);
+
+        html.Append(@"
+            <div class='section'>
+                <div class='section-title'>Estatísticas Globais</div>
+                <table>
+                    <tr>
+                        <th>Métrica</th>
+                        <th>Valor</th>
+                    </tr>
+                    <tr>
+                        <td>Total de Avarias Resolvidas</td>
+                        <td>" + totalResolved + @"</td>
+                    </tr>
+                    <tr>
+                        <td>Tempo Médio de Resolução</td>
+                        <td>" + avgResolutionTime.ToString("F2") + @" horas</td>
+                    </tr>
+                    <tr>
+                        <td>Resoluções no Prazo</td>
+                        <td>" + totalOnTime + @"</td>
+                    </tr>
+                    <tr>
+                        <td>Resoluções com Atraso</td>
+                        <td>" + totalDelayed + @"</td>
+                    </tr>
+                </table>
+            </div>");
+
+        // Individual Technician Statistics
+        foreach (var tech in stats)
+        {
+            html.Append($@"
+                <div class='section'>
+                    <div class='section-title'>Técnico: {tech.TechnicianName}</div>
+                    <table>
+                        <tr>
+                            <th>Métrica</th>
+                            <th>Valor</th>
+                        </tr>
+                        <tr>
+                            <td>Total de Avarias Resolvidas</td>
+                            <td>{tech.TotalAvariaResolved}</td>
+                        </tr>
+                        <tr>
+                            <td>Tempo Médio de Resolução</td>
+                            <td>{tech.AverageResolutionTime:F2} horas</td>
+                        </tr>
+                        <tr>
+                            <td>Resoluções no Prazo</td>
+                            <td>{tech.OnTimeResolutions}</td>
+                        </tr>
+                        <tr>
+                            <td>Resoluções com Atraso</td>
+                            <td>{tech.DelayedResolutions}</td>
+                        </tr>
+                    </table>");
+
+            // Avaria Type Statistics
+            if (tech.AvariaTypeStats?.Any() == true)
+            {
+                html.Append(@"
+                    <div class='section-title'>Estatísticas por Tipo de Avaria</div>
+                    <table>
+                        <tr>
+                            <th>Tipo de Avaria</th>
+                            <th>Quantidade</th>
+                            <th>Tempo Médio (horas)</th>
+                        </tr>");
+
+                foreach (var type in tech.AvariaTypeStats)
+                {
+                    html.Append($@"
+                        <tr>
+                            <td>{type.AvariaType ?? "N/A"}</td>
+                            <td>{type.Count}</td>
+                            <td>{type.AverageResolutionTime:F2}</td>
+                        </tr>");
+                }
+                html.Append("</table>");
+            }
+
+            // Monthly Statistics
+            if (tech.MonthlyStats?.Any() == true)
+            {
+                html.Append(@"
+                    <div class='section-title'>Estatísticas Mensais</div>
+                    <table>
+                        <tr>
+                            <th>Mês/Ano</th>
+                            <th>Total Resolvidas</th>
+                            <th>Tempo Médio</th>
+                            <th>No Prazo</th>
+                            <th>Com Atraso</th>
+                        </tr>");
+
+                foreach (var month in tech.MonthlyStats)
+                {
+                    html.Append($@"
+                        <tr>
+                            <td>{month.Month}/{month.Year}</td>
+                            <td>{month.TotalAvariaResolved}</td>
+                            <td>{month.AverageResolutionTime:F2} horas</td>
+                            <td>{month.OnTimeResolutions}</td>
+                            <td>{month.DelayedResolutions}</td>
+                        </tr>");
+                }
+                html.Append("</table>");
+            }
+
+            html.Append("</div>");
+        }
+
+        html.Append("</body></html>");
+        return html.ToString();
     }
 } 

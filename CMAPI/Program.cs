@@ -11,6 +11,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using DinkToPdf;
+using DinkToPdf.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +37,7 @@ builder.Services.AddScoped<UsersService>();
 builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<PDFReportService>();
 builder.Services.AddScoped<OllamaService>();
+builder.Services.AddSingleton(typeof(IConverter), new SynchronizedConverter(new PdfTools()));
 
 // WebSocket Services
 builder.Services.AddSingleton<WebSocketConnectionManager>();

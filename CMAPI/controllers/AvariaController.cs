@@ -303,10 +303,15 @@ public class AvariaController : ControllerBase
     }
 
     [HttpGet("GenerateTechnicianStatsReport")]
-    public async Task<IActionResult> GenerateTechnicianStatsReport([FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    public async Task<IActionResult> GenerateTechnicianStatsReport([FromQuery] string email, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
     {
         try
         {
+            if (string.IsNullOrEmpty(email))
+            {
+                return BadRequest(new { message = "Email is required" });
+            }
+
             // Set default date range if not provided (last 6 months)
             startDate ??= DateTime.UtcNow.AddMonths(-6);
             endDate ??= DateTime.UtcNow;
@@ -314,24 +319,10 @@ public class AvariaController : ControllerBase
             // Get statistics
             var stats = await _avariaService.GetAllTechniciansStatsAsync(startDate, endDate);
 
-            // Generate PDF report
-            var reportPath = await _pdfReportService.GenerateTechnicianStatsReportAsync(stats, startDate.Value, endDate.Value);
+            // Generate PDF report and send via email
+            var reportPath = await _pdfReportService.GenerateAndSendTechnicianStatsReportAsync(stats, startDate.Value, endDate.Value, email);
 
-            // Get the full path
-            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", reportPath);
-
-            // Check if file exists
-            if (!System.IO.File.Exists(fullPath))
-                return NotFound(new { message = "Report file not found" });
-
-            // Get file bytes
-            var fileBytes = await System.IO.File.ReadAllBytesAsync(fullPath);
-
-            // Get file name
-            var fileName = Path.GetFileName(fullPath);
-
-            // Return file
-            return File(fileBytes, "application/pdf", fileName);
+            return Ok(new { message = "Report has been generated and sent to your email" });
         }
         catch (Exception ex)
         {
