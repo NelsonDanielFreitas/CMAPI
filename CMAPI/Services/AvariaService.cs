@@ -139,10 +139,10 @@ public class AvariaService
             Guid? technicianId = null;
             if (urgencia.Name.Equals("Alta", StringComparison.OrdinalIgnoreCase))
             {
-                // 1) Get all technicians
+                // 1) Get all active technicians
                 var techUsers = await _context.Users
                     .Include(u => u.Role)
-                    .Where(u => u.Role.RoleName.ToUpper() == "TECNICO")   
+                    .Where(u => u.Role.RoleName.ToUpper() == "TECNICO" && u.isActive)   
                     .ToListAsync();                                       
 
                 if (techUsers.Count > 0)

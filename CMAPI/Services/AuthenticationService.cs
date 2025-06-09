@@ -216,7 +216,7 @@ public class AuthenticationService
     
     private void SendResetPasswordEmail(string email, string code)
     {
-        var fromAddress = new MailAddress(_config["Email:Username"], "Your App");
+        var fromAddress = new MailAddress(_config["Email:Username"], "RoneFix");
         var toAddress = new MailAddress(email);
         const string subject = "Reset Password";
         string body = $"Your reset code is: {code}";

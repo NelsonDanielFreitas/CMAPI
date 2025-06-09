@@ -53,14 +53,14 @@ public class ChatHub
                         var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
                         var dto = JsonSerializer.Deserialize<IncomingChatDto>(json);
                         
-                        if (dto == null || string.IsNullOrEmpty(dto.message))
+                        if (dto == null)
                         {
                             await SendErrorAsync("Invalid message format");
                             continue;
                         }
 
-                        // Handle connection to specific avaria
-                        if (dto.avariaId != _currentAvariaId)
+                        // Handle initial connection or avaria change
+                        if (dto.avariaId.HasValue && dto.avariaId.Value != _currentAvariaId)
                         {
                             // If we were connected to a different avaria, remove that connection
                             if (_currentAvariaId != Guid.Empty)
@@ -69,30 +69,38 @@ public class ChatHub
                             }
                             
                             // Add connection to new avaria
-                            _currentAvariaId = dto.avariaId;
+                            _currentAvariaId = dto.avariaId.Value;
                             _connectionManager.AddConnection(_currentAvariaId, _userId, _socket);
                             
                             // Send connection confirmation
                             await SendMessageAsync(new { type = "connected", avariaId = _currentAvariaId });
                         }
 
-                        var incoming = new ChatMessage
+                        // Only process message if we have an avaria connection and a message
+                        if (_currentAvariaId != Guid.Empty && !string.IsNullOrEmpty(dto.message))
                         {
-                            AvariaId = dto.avariaId,
-                            Message = dto.message,
-                            SenderId = _userId
-                        };
+                            var incoming = new ChatMessage
+                            {
+                                AvariaId = _currentAvariaId,
+                                Message = dto.message,
+                                SenderId = _userId
+                            };
 
-                        var saved = await _chatService.SaveMessageAsync(incoming);
-                        
-                        // Broadcast to all users connected to this avaria
-                        var broadcastMessage = JsonSerializer.Serialize(new
+                            var saved = await _chatService.SaveMessageAsync(incoming);
+                            
+                            // Broadcast to all users connected to this avaria
+                            var broadcastMessage = JsonSerializer.Serialize(new
+                            {
+                                type = "message",
+                                message = saved
+                            });
+                            
+                            await _connectionManager.BroadcastToAvaria(_currentAvariaId, broadcastMessage);
+                        }
+                        else if (string.IsNullOrEmpty(dto.message))
                         {
-                            type = "message",
-                            message = saved
-                        });
-                        
-                        await _connectionManager.BroadcastToAvaria(_currentAvariaId, broadcastMessage);
+                            await SendErrorAsync("Message cannot be empty");
+                        }
                     }
                     catch (JsonException ex)
                     {
@@ -185,7 +193,7 @@ public class ChatHub
     
     public class IncomingChatDto
     {
-        public Guid avariaId { get; set; }
+        public Guid? avariaId { get; set; }
         public string message { get; set; }
     }
 }
