@@ -138,11 +138,20 @@ public class UsersService
                 .Include(u => u.AvariaComentarios)
                 .Include(u => u.ChatMessagesSent)
                 .Include(u => u.MessagesRead)
+                .Include(u => u.Role)  // Include Role to check if user is a technician
                 .FirstOrDefaultAsync(u => u.Id == userId);
 
             if (user == null)
             {
                 return (false, "User not found");
+            }
+
+            // If user is a technician, only deactivate
+            if (user.Role.RoleName.ToUpper() == "TECNICO")
+            {
+                user.isActive = false;
+                await _context.SaveChangesAsync();
+                return (true, "Technician account has been deactivated.");
             }
 
             // Check if user has any activity
@@ -160,7 +169,7 @@ public class UsersService
                 return (true, "User has activity history. Account has been deactivated instead of deleted.");
             }
 
-            // If no activity, proceed with deletion
+            // If no activity and not a technician, proceed with deletion
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
             return (true, "User successfully deleted");
