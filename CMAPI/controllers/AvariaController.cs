@@ -1,5 +1,6 @@
 using CMAPI.DTO.Avaria;
 using CMAPI.Services;
+using CMAPI.Services.Encryption;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Distributed;
@@ -20,6 +21,8 @@ public class AvariaController : ControllerBase
     private readonly JwtService _jwtService;
     private readonly IDistributedCache _cache;
     private readonly PDFReportService _pdfReportService;
+    private readonly UsersService _usersService;
+    private readonly IEncryptionService _crypto;
     private const string CACHE_KEY_PREFIX = "avarias_user_";
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -27,12 +30,20 @@ public class AvariaController : ControllerBase
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public AvariaController(AvariaService avariaService, JwtService jwtService, IDistributedCache cache, PDFReportService pdfReportService)
+    public AvariaController(
+        AvariaService avariaService, 
+        JwtService jwtService, 
+        IDistributedCache cache, 
+        PDFReportService pdfReportService, 
+        UsersService usersService,
+        IEncryptionService crypto)
     {
         _avariaService = avariaService;
         _jwtService = jwtService;
         _cache = cache;
         _pdfReportService = pdfReportService;
+        _usersService = usersService;
+        _crypto = crypto;
     }
     
     [HttpPost("CreateTipoUrgencia")]
@@ -233,6 +244,20 @@ public class AvariaController : ControllerBase
         {
             var userId = _jwtService.GetUserIdFromToken(token);
             var updatedAvaria = await _avariaService.UpdateAvaria(requestEdit, id, userId);
+            
+            // Clear all cache entries by removing the cache key for all users
+            var allUsers = await _usersService.GetAllUsers();
+            foreach (var user in allUsers)
+            {
+                var encryptedId = user.Id;
+                var decryptedId = _crypto.Decrypt(encryptedId);
+
+                if (encryptedId != null)
+                {
+                    Console.WriteLine($"Removing cache for user: {decryptedId}");
+                    await _cache.RemoveAsync($"{CACHE_KEY_PREFIX}{decryptedId}");
+                }
+            }
             
             return Ok(new { message = "Funcionou" });
         }

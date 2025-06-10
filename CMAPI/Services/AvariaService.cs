@@ -465,6 +465,11 @@ public class AvariaService
         {
             existingAvaria.Descricao = requestEdit.Descricao;
         }
+
+        if (requestEdit.Location != existingAvaria.Localizacao)
+        {
+            existingAvaria.Localizacao = requestEdit.Location;
+        }
         
         if (!Guid.TryParse(requestEdit.StatusAvaria, out var parsedStatusAvaria))
             throw new ArgumentException("Invalid user id", nameof(requestEdit.StatusAvaria));
